@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="logo.svg" alt="Palawan Collective · MerQato Digital · Coyo Coco" width="280" />
+<img src="logo.svg" alt="Palawan Collective · MerQato Digital · Cayo Coco" width="280" />
 
 # Palawan Collective · MerQato Digital · Coyo Coco
 
@@ -18,7 +18,7 @@ Three entities building together:
 |---|---|
 | **Palawan Collective** | Palawan-rooted business & digital ecosystem — local business, tourism, hospitality, digital visibility |
 | **MerQato Digital** | Digital agency — website design & development, web apps, AI agents, automation |
-| **Coyo Coco** | The resort — website, brand, direct bookings |
+| **Cayo Coco** | The resort — website, brand, direct bookings |
 
 This repository holds the combined work: the Coyo Coco resort site and the platform components that power it.
 
