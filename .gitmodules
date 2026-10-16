@@ -2,5 +2,5 @@
 	path = cayo-cocoisland
 	url = https://github.com/sanvicpalawan/cayo-cocoisland.git
 [submodule "baia-lodge-pms"]
-	path = baia-lodge-pms
+	path = lodge-platform
 	url = https://github.com/sanvicpalawan/baia-lodge-pms.git

@@ -29,7 +29,7 @@ This repository holds the combined work: the Coyo Coco resort site and the platf
 | Repo | Purpose | Stack |
 |---|---|---|
 | [`cayo-cocoisland`](./cayo-cocoisland) | Resort website (public-facing) | Vite + React 19 + TypeScript + Tailwind CSS 4 |
-| [`baia-lodge-pms`](./baia-lodge-pms) | Hotel PMS, booking engine & AI agents | NestJS + React + PostgreSQL + Redis |
+| [`lodge-platform`](./lodge-platform) | PMS, direct booking engine & AI agents | NestJS + React + PostgreSQL + Redis |
 
 > Both are tracked as **git submodules** so each keeps its own history and can be worked on independently.
 
@@ -76,7 +76,7 @@ npm run dev
 ### Run the platform (PMS + booking)
 
 ```bash
-cd baia-lodge-pms
+cd lodge-platform
 docker compose up
 ```
 
@@ -114,7 +114,7 @@ The lodging platform ships a **commission-free direct booking engine** (search �
 Each submodule retains its own license:
 
 - `cayo-cocoisland` — see its `LICENSE` / `README`
-- `baia-lodge-pms` — Apache License 2.0 (upstream copyright preserved in `NOTICE`)
+- `lodge-platform` — Apache License 2.0 (upstream copyright preserved in `NOTICE`)
 
 ---
 
