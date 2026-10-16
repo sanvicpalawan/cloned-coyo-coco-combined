@@ -1,0 +1,146 @@
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUUID,
+  IsIn,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  IsArray,
+  IsDateString,
+  MaxLength,
+  Length,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LosAdjustmentDto, OccupancyBandDto } from './rate-adjustment.dto';
+
+export class CreateRatePlanDto {
+  @ApiPropertyOptional({
+    description:
+      'Property id. Required in the body, or pass ?propertyId= as a query alias when omitted from the body.',
+  })
+  @IsOptional()
+  @IsUUID()
+  propertyId?: string;
+
+  @ApiProperty()
+  @IsUUID()
+  roomTypeId!: string;
+
+  @ApiProperty({ example: 'Best Available Rate' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name!: string;
+
+  @ApiProperty({ example: 'BAR1' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  code!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ enum: ['bar', 'derived', 'negotiated', 'package', 'promotional'] })
+  @IsIn(['bar', 'derived', 'negotiated', 'package', 'promotional'])
+  type!: string;
+
+  @ApiProperty({ example: '199.99' })
+  @IsString()
+  @IsNotEmpty()
+  baseAmount!: string;
+
+  @ApiProperty({ example: 'USD' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(3, 3)
+  currencyCode!: string;
+
+  @ApiPropertyOptional({ description: 'Parent rate plan ID (required for derived type)' })
+  @IsOptional()
+  @IsUUID()
+  @ValidateIf((o) => o.type === 'derived')
+  parentRatePlanId?: string;
+
+  @ApiPropertyOptional({ enum: ['percentage', 'fixed'] })
+  @IsOptional()
+  @IsIn(['percentage', 'fixed'])
+  @ValidateIf((o) => o.type === 'derived')
+  derivedAdjustmentType?: string;
+
+  @ApiPropertyOptional({ example: '-10.00', description: 'Negative = discount, positive = surcharge' })
+  @IsOptional()
+  @IsString()
+  @ValidateIf((o) => o.type === 'derived')
+  derivedAdjustmentValue?: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  isTaxInclusive?: boolean;
+
+  @ApiPropertyOptional({ enum: ['room_only', 'breakfast', 'half_board', 'full_board', 'all_inclusive'] })
+  @IsOptional()
+  @IsIn(['room_only', 'breakfast', 'half_board', 'full_board', 'all_inclusive'])
+  mealPlan?: string;
+
+  @ApiPropertyOptional({ example: '2024-01-01' })
+  @IsOptional()
+  @IsDateString()
+  validFrom?: string;
+
+  @ApiPropertyOptional({ example: '2024-12-31' })
+  @IsOptional()
+  @IsDateString()
+  validTo?: string;
+
+  @ApiPropertyOptional({ example: ['booking.com', 'expedia'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  channelCodes?: string[];
+
+  @ApiPropertyOptional({ description: 'Linked cancellation policy ID' })
+  @IsOptional()
+  @IsUUID()
+  cancellationPolicyId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Link negotiated (or other) rate to a corporate/agent profile (KB 14.3)',
+  })
+  @IsOptional()
+  @IsUUID()
+  groupProfileId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
+
+  @ApiPropertyOptional({
+    type: [LosAdjustmentDto],
+    description: 'LOS pricing tiers (e.g. 7+/14+/21+ night discounts)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LosAdjustmentDto)
+  losAdjustments?: LosAdjustmentDto[];
+
+  @ApiPropertyOptional({
+    type: [OccupancyBandDto],
+    description: 'Occupancy-based pricing bands',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OccupancyBandDto)
+  occupancyBands?: OccupancyBandDto[];
+}

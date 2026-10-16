@@ -1,0 +1,225 @@
+services:
+  # PostgreSQL — multi-tenant from day one
+  postgres:
+    image: postgres:16-alpine
+    container_name: haip-postgres
+    environment:
+      POSTGRES_USER: haip
+      POSTGRES_PASSWORD: haip
+      POSTGRES_DB: haip
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./keycloak/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U haip']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis — session cache, rate caching, pub/sub for events, BullMQ
+  redis:
+    image: redis:7-alpine
+    container_name: haip-redis
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak — OIDC provider for authentication & RBAC.
+  # Behind the `auth` profile: the default `docker compose up` runs auth-free
+  # (AUTH_ENABLED=false) for a fast, lean demo. Start it with:
+  #   docker compose --profile auth up
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: haip-keycloak
+    profiles:
+      - auth
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: haip
+      KC_DB_PASSWORD: haip
+      KC_HEALTH_ENABLED: 'true'
+    volumes:
+      - ./keycloak/haip-realm.json:/opt/keycloak/data/import/haip-realm.json:ro
+    ports:
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'exec 3<>/dev/tcp/localhost/8080 && echo -e "GET /health/ready HTTP/1.1\r\nHost: localhost\r\n\r\n" >&3 && cat <&3 | grep -q "UP"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # One-shot DB init — pushes the schema and seeds the demo hotel, then exits.
+  # Runs the compiled scripts from the production image (no tsx/source needed).
+  # Idempotent: schema uses IF NOT EXISTS; seed skips if property 'TGH' exists.
+  init:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        # Kept in sync with the api service's BAIA_BOOKING_REQUESTS below so the
+        # UI build and the API's module-loading flag never disagree.
+        VITE_BAIA_BOOKING_REQUESTS: ${BAIA_BOOKING_REQUESTS:-false}
+    image: haip-api
+    container_name: haip-init
+    # Also applies the optional booking-requests package migrations when the
+    # deployment flag is on (see packages/booking-requests/README.md).
+    command: sh -c "node packages/database/dist/run-migrations.js && node packages/database/dist/seed.js && if [ \"$$BAIA_BOOKING_REQUESTS\" = 'true' ]; then node packages/booking-requests/dist/database/migrate.js; fi"
+    environment:
+      DATABASE_URL: postgresql://haip:haip@postgres:5432/haip
+      BAIA_BOOKING_REQUESTS: ${BAIA_BOOKING_REQUESTS:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  # BAIA API
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        VITE_BAIA_BOOKING_REQUESTS: ${BAIA_BOOKING_REQUESTS:-false}
+    image: haip-api
+    container_name: haip-api
+    environment:
+      NODE_ENV: development
+      # Serve the bundled dashboard at the same origin as the API (port 3000),
+      # so the one-command demo has a single URL. (Auth stays off by default.)
+      SERVE_DASHBOARD: 'true'
+      SERVE_BOOKING: 'true'
+      PORT: 3000
+      DATABASE_URL: postgresql://haip:haip@postgres:5432/haip
+      REDIS_URL: redis://redis:6379
+      STRIPE_MODE: mock
+      # STRIPE_SECRET_KEY:
+      # STRIPE_WEBHOOK_SECRET:
+      AUTH_ENABLED: 'false'
+      DEMO_PROPERTY_ID: 'a0000001-0000-4000-a000-000000000001'
+      # Optional booking-requests module (STR / request-first direct booking).
+      # Set `BAIA_BOOKING_REQUESTS=true docker compose up --build` to opt in;
+      # this also drives the matching VITE_BAIA_BOOKING_REQUESTS build-arg above
+      # and the booking-requests migration in the init service.
+      BAIA_BOOKING_REQUESTS: ${BAIA_BOOKING_REQUESTS:-false}
+      # Local demo intentionally runs auth-off + mock payments. The prod boot
+      # check only fires when NODE_ENV=production; this opt-in keeps the lean
+      # demo green even if someone flips NODE_ENV.
+      BAIA_ALLOW_INSECURE: 'true'
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: haip
+      KEYCLOAK_CLIENT_ID: haip-api
+      BOOKING_COM_BASE_URL: http://mock-bookingcom:4000/ota
+      BOOKING_COM_USERNAME: haip_test
+      BOOKING_COM_PASSWORD: test_password
+      BOOKING_COM_HOTEL_ID: MOCK_HOTEL_1
+      SITEMINDER_BASE_URL: http://mock-siteminder:4001/pmsxchange
+      SITEMINDER_USERNAME: haip_test
+      SITEMINDER_PASSWORD: test_password
+      SITEMINDER_HOTEL_CODE: MOCK_SM_HOTEL
+      EXPEDIA_BASE_URL: https://services.expediapartnercentral.com
+      EXPEDIA_USERNAME: haip_test
+      EXPEDIA_PASSWORD: test_password
+      EXPEDIA_HOTEL_ID: MOCK_EXP_HOTEL
+      DERBYSOFT_TUNNEL_BASE_URL: http://mock-derbysoft:4002/pcapigateway/tunnel/{accountId}
+      DERBYSOFT_PROFILE_BASE_URL: http://mock-derbysoft:4002/pcapigateway/profile/{accountId}
+      DERBYSOFT_TOKEN_URL: http://mock-derbysoft:4002/pcapigateway/account/token
+      DERBYSOFT_ACCOUNT_ID: haip_test
+      DERBYSOFT_CLIENT_SECRET: test_password
+      DERBYSOFT_HOTEL_ID: MOCK_DS_HOTEL
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    # For local dev, mount source and use watch mode
+    # volumes:
+    #   - ./apps/api/src:/app/apps/api/src
+
+  # Mock Booking.com Connectivity Partner API (optional, for channel testing)
+  mock-bookingcom:
+    build:
+      context: ./tools/mock-bookingcom
+      dockerfile: Dockerfile
+    container_name: haip-mock-bookingcom
+    environment:
+      PORT: 4000
+      AUTH_USER: haip_test
+      AUTH_PASS: test_password
+    ports:
+      - '4000:4000'
+    profiles:
+      - channels
+
+  # Mock SiteMinder pmsXchange API (optional, for channel testing)
+  mock-siteminder:
+    build:
+      context: ./tools/mock-siteminder
+      dockerfile: Dockerfile
+    container_name: haip-mock-siteminder
+    environment:
+      PORT: 4001
+      AUTH_USER: haip_test
+      AUTH_PASS: test_password
+    ports:
+      - '4001:4001'
+    profiles:
+      - channels
+
+  # Mock DerbySoft Property Connector API (optional, for channel testing)
+  mock-derbysoft:
+    build:
+      context: ./tools/mock-derbysoft
+      dockerfile: Dockerfile
+    container_name: haip-mock-derbysoft
+    environment:
+      PORT: 4002
+      CLIENT_ID: haip_test
+      CLIENT_SECRET: test_password
+    ports:
+      - '4002:4002'
+    profiles:
+      - channels
+
+  # MinIO — S3-compatible object storage for media uploads (optional).
+  # Behind the `storage` profile so the default `docker compose up` stays lean
+  # and runs on stock image URLs (no uploads). Enable with:
+  #   docker compose --profile storage up
+  # then set STORAGE_DRIVER=s3 and the S3_* vars on the api service.
+  minio:
+    image: minio/minio:latest
+    container_name: haip-minio
+    profiles:
+      - storage
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: haip
+      MINIO_ROOT_PASSWORD: haip_secret
+    ports:
+      - '127.0.0.1:9000:9000' # S3 API
+      - '127.0.0.1:9001:9001' # Web console
+    volumes:
+      - minio-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

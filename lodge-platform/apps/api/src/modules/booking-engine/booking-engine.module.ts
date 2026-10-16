@@ -1,0 +1,56 @@
+import { Module } from '@nestjs/common';
+import { BookingEngineController } from './booking-engine.controller';
+import { BookingEngineAdminController } from './booking-engine-admin.controller';
+import { BookingReturnController } from './booking-return.controller';
+import { BookingEngineService } from './booking-engine.service';
+import { BookingEngineConfigService } from './booking-engine-config.service';
+import { BookingThrottleGuard } from './booking-throttle.guard';
+import { BookingKeyGuard } from '../auth/booking-key.guard';
+import { BookingEngineScopeGuard } from '../auth/booking-engine-scope.guard';
+import { ConnectModule } from '../connect/connect.module';
+import { ReservationModule } from '../reservation/reservation.module';
+import { RatePlanModule } from '../rate-plan/rate-plan.module';
+import { TaxModule } from '../tax/tax.module';
+import { GuestModule } from '../guest/guest.module';
+import { FolioModule } from '../folio/folio.module';
+import { PaymentModule } from '../payment/payment.module';
+import { AccountingModule } from '../accounting/accounting.module';
+import { AuthModule } from '../auth/auth.module';
+import { AncillaryModule } from '../ancillary/ancillary.module';
+import { PolicyModule } from '../policy/policy.module';
+
+@Module({
+  imports: [
+    ConnectModule, // ConnectSearchService, ConnectBookingService
+    ReservationModule, // ReservationService, AvailabilityService
+    RatePlanModule,
+    TaxModule,
+    GuestModule,
+    FolioModule,
+    PaymentModule,
+    AccountingModule, // DepositService
+    AuthModule,
+    AncillaryModule,
+    PolicyModule,
+  ],
+  controllers: [BookingEngineController, BookingEngineAdminController, BookingReturnController],
+  providers: [
+    BookingEngineService,
+    BookingEngineConfigService,
+    BookingKeyGuard,
+    BookingEngineScopeGuard,
+    BookingThrottleGuard,
+  ],
+  exports: [
+    BookingEngineService,
+    BookingEngineConfigService,
+    // Exported so `@telivityhaip/booking-requests`'s `BookingRequestModule.forRoot(...)`
+    // can bind its guard-bridge ports to these same singletons via `useExisting`
+    // (see `apps/api/src/booking-requests.bootstrap.ts`) instead of duplicating
+    // credential/scope/rate-limit logic in the package.
+    BookingKeyGuard,
+    BookingEngineScopeGuard,
+    BookingThrottleGuard,
+  ],
+})
+export class BookingEngineModule {}

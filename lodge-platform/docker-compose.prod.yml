@@ -1,0 +1,60 @@
+# Production self-host overrides for docker-compose.yml
+#
+# Prerequisites:
+#   cp .env.production.example .env.production   # fill credentials
+#
+# Start (Keycloak is on the `auth` profile in the base file):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile auth up -d --build
+#
+# Services: postgres, redis, keycloak (--profile auth), init, api.
+# Mock channel adapters and MinIO stay on optional profiles (channels, storage).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        VITE_AUTH_ENABLED: 'true'
+        VITE_KEYCLOAK_URL: http://localhost:8080
+        VITE_KEYCLOAK_REALM: haip
+        VITE_KEYCLOAK_CLIENT_ID: haip-dashboard
+        # Must match the api service's BAIA_BOOKING_REQUESTS below.
+        VITE_BAIA_BOOKING_REQUESTS: 'false'
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      AUTH_ENABLED: 'true'
+      SERVE_DASHBOARD: 'true'
+      SERVE_BOOKING: 'true'
+      STRIPE_MODE: test
+      # Override demo-only opt-out; must not be 'true' in production.
+      BAIA_ALLOW_INSECURE: ''
+      KEYCLOAK_URL: http://keycloak:8080
+      DATABASE_URL: postgresql://haip:haip@postgres:5432/haip
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
+  init:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        VITE_AUTH_ENABLED: 'true'
+        VITE_KEYCLOAK_URL: http://localhost:8080
+        VITE_KEYCLOAK_REALM: haip
+        VITE_KEYCLOAK_CLIENT_ID: haip-dashboard
+        VITE_BAIA_BOOKING_REQUESTS: 'false'
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: postgresql://haip:haip@postgres:5432/haip

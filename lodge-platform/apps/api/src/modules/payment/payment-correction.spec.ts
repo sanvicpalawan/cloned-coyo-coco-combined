@@ -1,0 +1,218 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { BadRequestException } from '@nestjs/common';
+import { PaymentService } from './payment.service';
+import { RedsysCredentialsService } from './redsys-credentials.service';
+import { WebhookService } from '../webhook/webhook.service';
+import { FolioService } from '../folio/folio.service';
+import { PAYMENT_GATEWAY } from './interfaces/payment-gateway.interface';
+import { DRIZZLE } from '../../database/database.module';
+
+const basePayment = {
+  id: 'pay-001',
+  propertyId: 'prop-001',
+  folioId: 'folio-001',
+  houseAccountId: null,
+  method: 'credit_card',
+  status: 'authorized',
+  amount: '100.00',
+  currencyCode: 'USD',
+  gatewayTransactionId: 'txn-1',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+function chainResolving(returnData: any[]) {
+  return () => ({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        then: (resolve: any) => resolve(returnData),
+      }),
+    }),
+  });
+}
+
+function buildDb(payment: any) {
+  return {
+    select: vi.fn().mockImplementation(chainResolving([payment])),
+    insert: vi.fn(),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ ...payment, status: 'voided' }]),
+        }),
+      }),
+    }),
+    delete: vi.fn(),
+  };
+}
+
+const mockWebhookService = { emit: vi.fn() };
+const mockConfigService = { get: vi.fn() };
+const mockRedsysCredentials = {
+  resolveForProperty: vi.fn().mockResolvedValue(null),
+  merchantNotificationUrl: vi.fn().mockReturnValue('http://localhost:3000/api/v1/webhooks/redsys'),
+};
+const mockFolioService = {
+  recalculateBalance: vi.fn().mockResolvedValue(undefined),
+  postCharge: vi.fn().mockResolvedValue({ id: 'adj-001', type: 'adjustment' }),
+};
+const mockGateway = {
+  authorize: vi.fn(),
+  capture: vi.fn(),
+  void: vi.fn().mockResolvedValue({ success: true, transactionId: 'txn-1' }),
+  refund: vi.fn().mockResolvedValue({ success: true, transactionId: 'rfd-1' }),
+};
+
+async function buildService(db: any) {
+  const module: TestingModule = await Test.createTestingModule({
+    providers: [
+      PaymentService,
+      { provide: DRIZZLE, useValue: db },
+      { provide: FolioService, useValue: mockFolioService },
+      { provide: WebhookService, useValue: mockWebhookService },
+      { provide: PAYMENT_GATEWAY, useValue: mockGateway },
+      { provide: ConfigService, useValue: mockConfigService },
+      { provide: RedsysCredentialsService, useValue: mockRedsysCredentials },
+    ],
+  }).compile();
+  return module.get<PaymentService>(PaymentService);
+}
+
+describe('PaymentService.correctPayment (correction matrix, KB 14.1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('voids an authorized card payment (delegates to voidPayment)', async () => {
+    const payment = { ...basePayment, status: 'authorized', method: 'credit_card' };
+    const svc = await buildService(buildDb(payment));
+    const result = await svc.correctPayment('pay-001', 'prop-001');
+    expect(result.op).toBe('void');
+    expect(mockGateway.void).toHaveBeenCalled();
+    expect(mockWebhookService.emit).toHaveBeenCalledWith(
+      'payment.corrected',
+      'payment',
+      'pay-001',
+      expect.objectContaining({ op: 'void' }),
+      'prop-001',
+    );
+  });
+
+  it('voids recent cash directly without a gateway call', async () => {
+    const payment = {
+      ...basePayment,
+      method: 'cash',
+      status: 'captured',
+      gatewayTransactionId: null,
+      createdAt: new Date(), // within 24h
+    };
+    const svc = await buildService(buildDb(payment));
+    const result = await svc.correctPayment('pay-001', 'prop-001');
+    expect(result.op).toBe('void');
+    expect(mockGateway.void).not.toHaveBeenCalled();
+    expect(mockFolioService.recalculateBalance).toHaveBeenCalledWith('folio-001', 'prop-001');
+  });
+
+  it('rejects a void override on a captured card payment (must refund)', async () => {
+    const payment = { ...basePayment, status: 'captured', method: 'credit_card' };
+    const svc = await buildService(buildDb(payment));
+    await expect(svc.correctPayment('pay-001', 'prop-001', 'void')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockGateway.void).not.toHaveBeenCalled();
+  });
+
+  it('refunds a captured card payment', async () => {
+    const payment = { ...basePayment, status: 'captured', method: 'credit_card' };
+    const makeTx = () => {
+      let selectCall = 0;
+      return {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockImplementation(() => {
+              selectCall++;
+              if (selectCall === 1) {
+                return { for: vi.fn().mockResolvedValue([payment]) };
+              }
+              return { then: (resolve: any) => resolve([]) };
+            }),
+          }),
+        })),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 'rfd-row', status: 'captured' }]),
+          }),
+        }),
+      };
+    };
+    const db = {
+      select: vi.fn().mockImplementation(chainResolving([payment])),
+      transaction: vi.fn(async (fn: any) => fn(makeTx())),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const svc = await buildService(db);
+    const result = await svc.correctPayment('pay-001', 'prop-001');
+    expect(result.op).toBe('refund');
+    expect(mockGateway.refund).toHaveBeenCalled();
+  });
+
+  it('adjusts an old cash payment via a negative payment child', async () => {
+    const payment = {
+      ...basePayment,
+      method: 'cash',
+      status: 'captured',
+      gatewayTransactionId: null,
+      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+    };
+    const adjustmentRow = {
+      id: 'adj-pay-001',
+      amount: '-100.00',
+      originalPaymentId: 'pay-001',
+      status: 'captured',
+    };
+    const tx = {
+      select: vi.fn().mockImplementation(() => ({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            for: vi.fn().mockResolvedValue([payment]),
+          }),
+        }),
+      })),
+      insert: vi.fn().mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([adjustmentRow]),
+        }),
+      }),
+    };
+    const db = {
+      select: vi.fn().mockImplementation(chainResolving([payment])),
+      transaction: vi.fn(async (fn: any) => fn(tx)),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const svc = await buildService(db);
+    const result = await svc.correctPayment('pay-001', 'prop-001');
+    expect(result.op).toBe('adjust');
+    expect(tx.insert).toHaveBeenCalled();
+    expect(mockFolioService.postCharge).not.toHaveBeenCalled();
+    expect(mockFolioService.recalculateBalance).toHaveBeenCalledWith('folio-001', 'prop-001', tx);
+    expect(mockWebhookService.emit).toHaveBeenCalledWith(
+      'payment.corrected',
+      'payment',
+      'pay-001',
+      expect.objectContaining({ op: 'adjust', adjustmentAmount: '-100.00' }),
+      'prop-001',
+    );
+  });
+
+  it('rejects an illegal override (refund on authorized hold)', async () => {
+    const payment = { ...basePayment, status: 'authorized', method: 'credit_card' };
+    const svc = await buildService(buildDb(payment));
+    await expect(svc.correctPayment('pay-001', 'prop-001', 'refund')).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+});

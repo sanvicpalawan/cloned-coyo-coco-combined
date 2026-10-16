@@ -1,0 +1,44 @@
+{
+  "name": "baia-lodge-pms",
+  "version": "0.1.0",
+  "description": "BAIA Lodge PMS (Palawan Collective) — Open-source, API-first hotel PMS",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter @telivityhaip/api run dev",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "readme:sync-tests": "node scripts/sync-test-count.mjs",
+    "test:coverage": "pnpm -r run test:coverage",
+    "seed": "pnpm --filter @telivityhaip/database run seed",
+    "db:generate": "pnpm --filter @telivityhaip/database run db:generate",
+    "db:migrate": "pnpm --filter @telivityhaip/database run db:migrate",
+    "db:migrate:booking-requests": "pnpm --filter @telivityhaip/booking-requests run db:migrate",
+    "db:studio": "pnpm --filter @telivityhaip/database run db:studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "harden:local": "node ops/harden/cli/harden.mjs local",
+    "harden:live": "node ops/harden/cli/harden.mjs live",
+    "harden": "node ops/harden/cli/harden.mjs all",
+    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "integrations:demo": "bash integrations/demos/run.sh",
+    "integration:link": "pnpm --filter @telivityhaip/database link-integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.58.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/node": "^22.0.0"
+    }
+  }
+}

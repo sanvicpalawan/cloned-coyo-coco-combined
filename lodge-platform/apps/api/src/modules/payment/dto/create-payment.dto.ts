@@ -1,0 +1,114 @@
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUUID,
+  IsIn,
+  IsDateString,
+  MaxLength,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsMoneyString } from '../../../common/validation/is-money-string.validator';
+
+export class CreatePaymentDto {
+  @ApiProperty({ description: 'Folio ID' })
+  @IsUUID()
+  @IsNotEmpty()
+  folioId!: string;
+
+  @ApiProperty({ description: 'Property ID' })
+  @IsUUID()
+  @IsNotEmpty()
+  propertyId!: string;
+
+  @ApiProperty({
+    enum: [
+      'credit_card',
+      'debit_card',
+      'cash',
+      'bank_transfer',
+      'pix',
+      'city_ledger',
+      'vcc',
+      'other',
+    ],
+    description:
+      'Manual settle tender. Use credit_card/debit_card here for offline card machines (no gateway). Gateway cards must use POST /payments/authorize. pix = Brazil PIX paid direct to the property.',
+  })
+  @IsIn([
+    'credit_card',
+    'debit_card',
+    'cash',
+    'bank_transfer',
+    'pix',
+    'city_ledger',
+    'vcc',
+    'other',
+  ])
+  method!: string;
+
+  @ApiProperty({ example: '150.00' })
+  @IsMoneyString() // must be a positive decimal string
+  amount!: string;
+
+  @ApiProperty({ example: 'USD' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(3)
+  currencyCode!: string;
+
+  @ApiPropertyOptional({ example: 'stripe' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  gatewayProvider?: string;
+
+  @ApiPropertyOptional({ description: 'Tokenized card reference (NEVER raw card data)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  gatewayPaymentToken?: string;
+
+  @ApiPropertyOptional({
+    example: 'sqpmt_01H...',
+    description:
+      "The gateway's own id for a payment taken OUT OF BAND — a link the guest paid, " +
+      'a terminal, or a charge made in the provider dashboard. The column already ' +
+      'exists but only the authorize/capture path could populate it, so a payment ' +
+      'recorded after the fact carried no reference back to the provider and could ' +
+      'not be reconciled against a settlement report.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  gatewayTransactionId?: string;
+
+  @ApiPropertyOptional({ example: '4242', description: 'Last 4 digits only' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4)
+  cardLastFour?: string;
+
+  @ApiPropertyOptional({ example: 'visa', enum: ['visa', 'mastercard', 'amex'] })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  cardBrand?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-03T00:37:33Z',
+    description:
+      'When the money actually moved. Omit for payments taken now — the server stamps ' +
+      'the current time. Supply it only when recording a payment that ALREADY happened ' +
+      'elsewhere, such as a historical import or an out-of-band gateway receipt. Must ' +
+      'not be in the future.',
+  })
+  @IsOptional()
+  @IsDateString()
+  processedAt?: string;
+}

@@ -1,0 +1,81 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import en from './locales/en.json';
+import de from './locales/de.json';
+import es from './locales/es.json';
+import fr from './locales/fr.json';
+import hr from './locales/hr.json';
+import it from './locales/it.json';
+import ptBR from './locales/pt-BR.json';
+import srLatn from './locales/sr-Latn.json';
+import tl from './locales/tl.json';
+
+/**
+ * i18n foundation for the dashboard.
+ *
+ * - English (`en`) is the source of truth and the fallback language: any key
+ *   missing from another locale renders the English string, so the UI stays
+ *   fully functional while a translation is incomplete.
+ * - Detection order: a user's saved choice (localStorage) wins, otherwise we
+ *   fall back to the browser language, otherwise English.
+ * - Resources are bundled inline (no async backend) so `t()` is ready
+ *   synchronously — important for tests and first paint.
+ *
+ * Adding a language: create `src/locales/<code>.json` mirroring en.json's key
+ * structure, import it here, and add it to `resources` + `supportedLngs`.
+ * See docs/i18n.md.
+ */
+export const SUPPORTED_LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'hr', label: 'Hrvatski' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'pt-BR', label: 'Português (Brasil)' },
+  { code: 'sr-Latn', label: 'Srpski' },
+  { code: 'tl', label: 'Tagalog' },
+] as const;
+
+// Include `pt` / `sr` / `fil` so navigator locales resolve via nonExplicitSupportedLngs
+// (not shown in switcher). `fil` is the national-language code for the same strings.
+const SUPPORTED_LOCALES = [...SUPPORTED_LANGUAGES.map((l) => l.code), 'pt', 'sr', 'fil'] as const;
+
+// Migrate legacy locale code saved before pt-BR was registered correctly.
+if (typeof window !== 'undefined' && typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function' && localStorage.getItem('haip.lang') === 'ptBR') {
+  localStorage.setItem('haip.lang', 'pt-BR');
+}
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: {
+      en: { translation: en },
+      de: { translation: de },
+      es: { translation: es },
+      fr: { translation: fr },
+      hr: { translation: hr },
+      it: { translation: it },
+      pt: { translation: ptBR },
+      'pt-BR': { translation: ptBR },
+      sr: { translation: srLatn },
+      'sr-Latn': { translation: srLatn },
+      tl: { translation: tl },
+      fil: { translation: tl },
+    },
+    fallbackLng: 'en',
+    supportedLngs: [...SUPPORTED_LOCALES],
+    nonExplicitSupportedLngs: true, // treat de-DE, de-AT, etc. as `de`
+    returnEmptyString: false, // empty "" values fall back to English, not blank
+    interpolation: { escapeValue: false }, // React already escapes
+    detection: {
+      order: ['localStorage', 'navigator'],
+      caches: ['localStorage'],
+      lookupLocalStorage: 'haip.lang',
+    },
+    react: { useSuspense: false },
+  });
+
+export default i18n;

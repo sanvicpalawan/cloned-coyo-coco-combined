@@ -2,7 +2,7 @@
 
 <img src="logo.svg" alt="Palawan Collective · MerQato Digital · Cayo Coco" width="280" />
 
-# Palawan Collective · MerQato Digital · Coyo Coco
+# Palawan Collective · MerQato Digital · Cayo Coco
 
 **A collaboration repo — resort website + digital platform.**
 
@@ -20,18 +20,19 @@ Three entities building together:
 | **MerQato Digital** | Digital agency — website design & development, web apps, AI agents, automation |
 | **Cayo Coco** | The resort — website, brand, direct bookings |
 
-This repository holds the combined work: the Coyo Coco resort site and the platform components that power it.
+This repository holds the combined work: the Cayo Coco resort site and the platform components that power it.
 
 ---
 
 ## Projects
 
-| Repo | Purpose | Stack |
+| Folder | Purpose | Stack |
 |---|---|---|
-| [`cayo-cocoisland`](./cayo-cocoisland) | Resort website (public-facing) | Vite + React 19 + TypeScript + Tailwind CSS 4 |
+| [`cayo-cocoisland`](./cayo-cocoisland) | Resort website (public-facing) + admin back office | Vite + React 19 + TypeScript + Tailwind CSS 4 |
 | [`lodge-platform`](./lodge-platform) | PMS, direct booking engine & AI agents | NestJS + React + PostgreSQL + Redis |
 
-> Both are tracked as **git submodules** so each keeps its own history and can be worked on independently.
+> Both projects are included directly in this repository so the whole stack clones in one step.
+> `lodge-platform` is derived from the upstream Apache-2.0 project (see its `NOTICE`).
 
 ---
 
@@ -52,17 +53,11 @@ This repository holds the combined work: the Coyo Coco resort site and the platf
 
 ## Getting Started
 
-### Clone everything at once
+### Clone
 
 ```bash
-git clone --recurse-submodules https://github.com/sanvicpalawan/cloned-coyo-coco-combined.git
+git clone https://github.com/sanvicpalawan/cloned-coyo-coco-combined.git
 cd cloned-coyo-coco-combined
-```
-
-### Or pull the submodules after a normal clone
-
-```bash
-git submodule update --init --recursive
 ```
 
 ### Run the resort website
@@ -86,6 +81,22 @@ docker compose up
 | Booking widget | http://localhost:3000/booking/ |
 | Swagger API | http://localhost:3000/docs |
 
+> Local ports can be remapped with a `docker-compose.override.yml` (not committed).
+
+---
+
+## Site Back Office
+
+The resort site ships an admin back office with two separate sections:
+
+| Section | What it does |
+|---|---|
+| **Dashboard** | Default tab — launches the PMS (a separate application; not embedded) |
+| **Edit site** | Site content, rooms, contact details |
+
+Site editing and PMS settings are deliberately kept apart. The PMS is the single source of
+truth for rooms, room types and rates; the resort site handles the public-facing content.
+
 ---
 
 ## Direct Booking
@@ -97,13 +108,23 @@ The lodging platform ships a **commission-free direct booking engine** (search �
 - Server-side re-quoting (never trusts a client price)
 - Deposits tracked as a liability, `reservation.created` fires for channel sync
 
+Currency: **PHP is the price of record**; USD and EUR are shown as display-only converted estimates.
+Guests choose the display currency in the booking widget.
+
+---
+
+## Status
+
+Work in progress — **build/staging, not live**. No payment gateway is enabled and the demo data
+uses placeholder PHP rates.
+
 ---
 
 ## Deployment
 
 | Target | What runs there |
 |---|---|
-| **Vercel** | Coyo Coco resort website (static frontend) |
+| **Vercel** | Cayo Coco resort website (static frontend) |
 | **Coolify / UpCloud VPS** | Booking platform, database, cache, agents |
 | **Cloudflare** | DNS + edge |
 
@@ -111,7 +132,7 @@ The lodging platform ships a **commission-free direct booking engine** (search �
 
 ## License
 
-Each submodule retains its own license:
+Each project retains its own license:
 
 - `cayo-cocoisland` — see its `LICENSE` / `README`
 - `lodge-platform` — Apache License 2.0 (upstream copyright preserved in `NOTICE`)
@@ -119,5 +140,5 @@ Each submodule retains its own license:
 ---
 
 <div align="center">
-<sub>Palawan Collective · MerQato Digital · Coyo Coco — built in Palawan, Philippines 🇵🇭</sub>
+<sub>Palawan Collective · MerQato Digital · Cayo Coco — built in Palawan, Philippines 🇵🇭</sub>
 </div>

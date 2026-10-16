@@ -1,0 +1,106 @@
+import { Injectable, Logger } from '@nestjs/common';
+import type {
+  EmailMessage,
+  EmailProvider,
+  EmailResult,
+  EmailSendOptions,
+} from '../email-provider.interface';
+import {
+  boundedEmailFetch,
+  EmailTransportTimeoutError,
+  notSentEmailResult,
+  sentEmailResult,
+  unknownTimeoutResult,
+} from './bounded-email-transport';
+
+/**
+ * SendGrid Email API reference adapter.
+ *
+ * Env: SENDGRID_API_KEY (required), SENDGRID_FROM (default sender).
+ * Uses fetch — no SendGrid SDK required.
+ *
+ * @see docs/integrations/sendgrid-email.md
+ */
+@Injectable()
+export class SendgridEmailProvider implements EmailProvider {
+  readonly name = 'sendgrid';
+  private readonly logger = new Logger(SendgridEmailProvider.name);
+  private apiKey?: string;
+  private defaultFrom?: string;
+
+  constructor() {
+    this.apiKey = process.env['SENDGRID_API_KEY'];
+    this.defaultFrom = process.env['SENDGRID_FROM'];
+    if (!this.apiKey) {
+      this.logger.log('SendGrid not configured — email will fall back to SMTP or console');
+    } else if (!this.defaultFrom) {
+      this.logger.warn('SENDGRID_API_KEY set but SENDGRID_FROM missing — sends may fail');
+    } else {
+      this.logger.log('SendGrid email provider configured');
+    }
+  }
+
+  isConfigured(): boolean {
+    return Boolean(this.apiKey && this.defaultFrom);
+  }
+
+  async send(message: EmailMessage, options?: EmailSendOptions): Promise<EmailResult> {
+    if (!this.isConfigured()) {
+      return notSentEmailResult(this.name, 'SendGrid not configured');
+    }
+
+    const from = message.from ?? this.defaultFrom!;
+    const personalization: {
+      to: Array<{ email: string }>;
+      headers?: Record<string, string>;
+      custom_args?: Record<string, string>;
+    } = { to: [{ email: message.to }] };
+    if (message.messageId) personalization.headers = { 'Message-ID': message.messageId };
+    if (message.idempotencyKey) {
+      personalization.custom_args = { haip_idempotency_key: message.idempotencyKey };
+    }
+    const payload = {
+      personalizations: [personalization],
+      from: { email: from },
+      subject: message.subject,
+      content: [
+        { type: 'text/plain', value: message.text },
+        { type: 'text/html', value: message.html },
+      ],
+    };
+
+    try {
+      const { response: res, failureBody } = await boundedEmailFetch(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+        options,
+        async (response) => ({
+          response,
+          failureBody: response.ok ? undefined : await response.text(),
+        }),
+      );
+
+      if (!res.ok) {
+        this.logger.error(`SendGrid send failed (${res.status}): ${failureBody ?? ''}`);
+        return notSentEmailResult(this.name, `SendGrid HTTP ${res.status}`);
+      }
+
+      const messageId = res.headers.get('x-message-id') ?? undefined;
+      this.logger.log(`Email sent via SendGrid to ${message.to}`);
+      return sentEmailResult(this.name, messageId);
+    } catch (error: any) {
+      if (error instanceof EmailTransportTimeoutError) {
+        return unknownTimeoutResult(this.name);
+      }
+      this.logger.error(`SendGrid send failed: ${error.message}`);
+      return notSentEmailResult(this.name, error.message);
+    }
+  }
+}

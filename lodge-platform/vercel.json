@@ -1,0 +1,1 @@
+{"version":2,"builds":[{"src":"apps/api/src/main.ts","use":"@vercel/node"}],"routes":[{"src":"/(.*)","dest":"/apps/api/src/main.ts"}],"env":{"DATABASE_URL":"postgresql://neondb_owner:npg_1jtcnF6MNXdL@ep-spring-lake-b3at2itv-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"}}
